@@ -22,33 +22,35 @@ module ActiveRecord
       private
 
       def set_operation(operation, relation_or_where_arg, *args)
-        other = if args.empty? && relation_or_where_arg.is_a?(Relation)
-                  relation_or_where_arg
-                else
-                  @klass.where(relation_or_where_arg, *args)
-                end
+        others = if relation_or_where_arg.is_a?(Relation)
+                   [relation_or_where_arg, *args]
+                 else
+                   [@klass.where(relation_or_where_arg, *args)]
+                 end
 
-        verify_relations_for_set_operation!(operation, self, other)
+        verify_relations_for_set_operation!(operation, self, *others)
 
         # Postgres allows ORDER BY in the UNION subqueries if each subquery is
         # surrounded by parenthesis but SQLite does not allow parens around
         # the subqueries; you will have to explicitly do
         # `relation.reorder(nil)` in SQLite
-        if visitor.is_a?(Arel::Visitors::SQLite)
-          left, right = ast, other.ast
+        queries = if visitor.is_a?(Arel::Visitors::SQLite)
+          [ast, *others.map(&:ast)]
         else
-          left, right = Arel::Nodes::Grouping.new(ast), Arel::Nodes::Grouping.new(other.ast)
+          [Arel::Nodes::Grouping.new(ast), *others.map(&:ast).map(&Arel::Nodes::Grouping.method(:new))]
         end
 
-        set = SET_OPERATION_TO_AREL_CLASS[operation].new(left, right)
+        arel_class = SET_OPERATION_TO_AREL_CLASS[operation]
+        set = queries.reduce { |left, right| arel_class.new(left, right) }
         from = Arel::Nodes::TableAlias.new(
           set,
-          @klass.arel_table.name
+          @klass.quoted_table_name
         )
 
         relation = @klass.unscoped.from(from)
         relation.bind_values = arel.bind_values + bind_values +
-                               other.arel.bind_values + other.bind_values
+                               others.map(&:arel).flat_map(&:bind_values) +
+                               others.flat_map(&:bind_values)
         relation
       end
 
