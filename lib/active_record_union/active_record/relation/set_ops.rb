@@ -4,7 +4,8 @@ module ActiveRecord
       SET_OPERATION_TO_AREL_CLASS = {
         union:     Arel::Nodes::Union,
         union_all: Arel::Nodes::UnionAll,
-        intersect: Arel::Nodes::Intersect
+        intersect: Arel::Nodes::Intersect,
+        except:    Arel::Nodes::Except
       }.freeze
 
       def union(relation_or_where_arg, *args)
@@ -17,6 +18,11 @@ module ActiveRecord
 
       def intersect(relation_or_where_arg, *args)
         set_operation(:intersect, relation_or_where_arg, *args)
+      end
+
+      # The name except is already taken
+      def set_except(relation_or_where_arg, *args)
+        set_operation(:except, relation_or_where_arg, *args)
       end
 
       private
